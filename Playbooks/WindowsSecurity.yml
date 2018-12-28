@@ -1,0 +1,39 @@
+---
+- hosts: windows
+  tasks:
+  
+#   Local Admin
+    - name: Disable local Administrator account
+      win_user:
+        name: Administrator
+        state: present
+        groups: Administrators
+        account_disabled: yes
+        password: plaintextpassword
+
+    - name: Create username admin
+      win_user:
+        name: username
+        state: present
+        account_disabled: no
+        groups: Administrators
+        password: plaintextpassword
+#        password: "{{ lookup( 'passwordstore', '{{ ansible_hostname }} create=true overwrite=true' ) }}"
+#        update_password: always
+
+    - name: Registry Settings
+      win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager
+        name: CWDIllegalInDllSearch
+        type: dword
+        data: 2
+
+#    - name: Terminal Server
+
+#    - name: Windows Updates
+
+#    - name: Anti-Virus
+
+#    - name: HTTP Response Headers
+
+#    - name: IIS Settings

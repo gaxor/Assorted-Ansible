@@ -1,0 +1,136 @@
+---
+- hosts: localhost
+  become: yes
+  vars:
+    domain_username: "username@domain.tld"
+    aws_access_key_id: "AKIAIOSFODNN7EXAMPLE"
+    aws_secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    aws_default_region: "us-east-1"
+    local_user: "centos"
+
+  tasks:
+
+    - name: Set persistent variables
+      blockinfile:
+        create: yes
+        path: /etc/profile
+        block: |
+          export AWS_ACCESS_KEY_ID={{ aws_access_key_id }}
+          export AWS_SECRET_ACCESS_KEY={{ aws_secret_access_key }}
+          export AWS_DEFAULT_REGION={{ aws_default_region }}
+          export PS1="\[\033[38;5;11m\]\u\[$(tput sgr0)\]\[\033[38;5;15m\]@\h\[$(tput sgr0)\]\[\033[38;5;6m\][\w]:\[$(tput sgr0)\]\[\033[38;5;15m\] \[$(tput sgr0)\]"
+
+    - name: Update all yum packages
+      yum:
+        name: '*'
+        state: latest
+
+    - name: Install yum packages for Ansible
+      yum:
+        pkg: "{{ item }}"
+        state: latest
+      with_items:
+        - epel-release
+        - ansible
+        - python-pip
+        - telnet
+        - git
+        - gcc
+        - python-devel
+        - krb5-workstation
+        - krb5-devel
+        - krb5-libs
+        - nano
+
+    - name: Install pip packages
+      pip:
+        name: "{{ item }}"
+        state: latest
+      with_items:
+        - pip
+        - boto
+        - pywinrm
+        - pywinrm[kerberos]
+        - awscli
+
+    - name: Add domain group to hosts
+      lineinfile:
+        path: /etc/ansible/hosts
+        line: "[domain]"
+
+    - name: Add dc1 to domain group in hosts
+      lineinfile:
+        path: /etc/ansible/hosts
+        line: "dc1.domain.tld"
+
+    - name: Create group_vars directory
+      file:
+        path: /etc/ansible/group_vars
+        state: directory
+
+    - name: Update ansible group_vars for windows variables
+      blockinfile:
+        create: yes
+        path: /etc/ansible/group_vars/domain.yml
+        block: |
+          ansible_connection: winrm
+          ansible_winrm_server_cert_validation: ignore
+          ansible_winrm_transport: kerberos
+          ansible_port: 5986
+          ansible_user: {{ domain_username }}
+
+    - name: Add kerberos config file
+      blockinfile:
+        path: /etc/krb5.conf.d/domain.conf
+        create: yes
+        block: |
+
+          [libdefaults]
+           default_realm = domain.tld
+
+          [realms]
+           domain.tld = {
+            kdc = dc1.domain.tld
+            kdc = dc2.domain.tld
+            kdc = dc3.domain.tld
+           }
+
+          [domain_realm]
+          .domain.tld = domain.tld
+
+    - name: Create Ansible group
+      group:
+        name: ansible
+
+    - name: Set Ansible directory permissions
+      file:
+        path: /etc/ansible
+        state: directory
+        recurse: yes
+        group: ansible
+        mode: "0774"
+
+    - name: Add user to groups
+      user:
+        name: "{{ local_user }}"
+        append: yes
+        groups:
+          - ansible
+          - wheel
+
+    - name: Set up DNS (add config lines)
+      lineinfile:
+        path: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }}"
+        regexp: "^{{ item.option }}=.*"
+        line: "{{ item.option }}=\"{{ item.value }}\""
+      with_items:
+        - { option: PEERDNS,    value: 'no' }
+        - { option: DOMAIN,     value: 'domain.tld' }
+        - { option: DNS1,       value: '10.0.0.1' }
+        - { option: DNS2,       value: '10.0.0.2' }
+        - { option: DNS3,       value: '8.8.8.8' }
+
+    - name: Set up DNS (Restart network service)
+      service:
+        name: network
+        state: restarted

@@ -1,0 +1,25 @@
+---
+- hosts: win
+  tasks:
+    - name: Install IIS
+      win_feature:
+        name: Web-Server
+        state: present
+        include_sub_features: True
+        include_management_tools: True
+    - name: install the lessmsi package
+      win_chocolatey:
+        name: lessmsi
+        state: present
+    - name: install the webpicmd package
+      win_chocolatey:
+        name: webpicmd
+        state: present
+    - name: copy answer file for DNN installer
+      win_copy:
+        src: ./dotnetnuke.app
+        dest: c:\windows\temp\dotnetnuke.app
+    - name: install DNN using the Web Platform Installer
+      win_command: webpicmd /install /application:DotNetNuke@"c:\windows\temp\dotnetnuke.app" /SQLPassword:plaintextpassword /AcceptEULA
+      register: installer_output
+    - debug: msg="{{ installer_output.stdout}}"

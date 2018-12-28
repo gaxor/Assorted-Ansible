@@ -1,0 +1,45 @@
+--- 
+- hosts: localhost
+  become: yes
+#setup variables - these can probably moved to an input file at some point.
+  vars:
+    instances:
+      - 'i-xxxxxxxx'
+    computername:
+      - 'testinstance'
+    win_ec2_key_name:
+      - 'ec2key'
+    DomainAdminUserName:
+      - "domain\\taskuser"
+    DomainAdminUserPassword:
+      - "PlainTextPassword"
+  tasks:
+    - name: create new ec2 instance
+      ec2:
+        region: us-east-1
+        keypair: 'keypair'
+        group: '**Group'
+        instance_type: 't2.small'
+        image: 'ami-xxxxxxxx' #image is 2016 with SQL Express
+        wait: true
+        vpc_subnet_id: 'subnet-ec000000' #common subnet for AWS hosting
+        assign_public_ip: yes
+        instance_tags: {"Name":"testinstance"}
+        user_data: |
+          <powershell>
+          Invoke-Expression ((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/devel/examples/scripts/ConfigureRemotingForAnsible.ps1'))
+          New-NetFirewallRule -DisplayName "Allow Ping" -Direction Inbound -Action Allow -Protocol icmpv4 -Enabled True
+          New-NetFirewallRule -DisplayName 'WinRM Inbound' -Profile @('Domain', 'Private') -Direction Inbound -Action Allow -Protocol TCP -LocalPort @('5986')
+          New-ItemProperty -Path HKLM:Software\Microsoft\Windows\CurrentVersion\policies\system -Name EnableLUA -PropertyType DWord -Value 0 -Force
+          $domain = "domain.local"
+          $password = "{{ DomainAdminUserPassword[0] }}"  | ConvertTo-SecureString -asPlainText -Force
+          $username = "{{ DomainAdminUserName[0] }}"
+          $oupath = "OU=Systems-Windows,DC=domain,DC=local"
+          $credential = New-Object System.Management.Automation.PSCredential($username,$password)
+          Add-Computer -DomainName $domain -Credential $credential -OUPath $oupath -newname jsctestinstance -Restart
+          </powershell>
+        #user_data can be debugged on the host using http://169.254.169.254/latest/user-data
+        # user_data: "{{ lookup('file', 'win_ps_startup.txt') }}"
+#        termination_protection: true
+      with_items: win_ec2_images
+      register: win_ec2

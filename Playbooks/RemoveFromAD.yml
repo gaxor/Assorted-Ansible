@@ -1,0 +1,7 @@
+---
+#This is a script to be used ad-hoc to allow for removing a server from AD
+- hosts: win
+
+  tasks:
+    - name: remove server from ad
+      win_command: powershell.exe "Remove-Computer -Credential domain\user -Force; Restart-Computer"

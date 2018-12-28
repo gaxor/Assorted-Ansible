@@ -1,0 +1,8 @@
+---
+#This is a script to be used ad-hoc to allow for removing a server from AD
+- hosts: win
+
+  tasks:
+    - name: rename server
+#      win_command: powershell.exe "Rename-Computer -NewName "jsc-test-instance" -Restart"
+      raw: Rename-Computer -NewName "test-instance" -Restart -Force -DomainCredential domain\user
